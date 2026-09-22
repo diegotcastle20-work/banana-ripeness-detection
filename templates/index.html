@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Clasificación de Plátanos</title>
+    <!-- Se utiliza url_for para enrutamiento nativo de Flask -->
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+
+    <header class="navbar">
+        <h1>🍌 Clasificador de Plátanos</h1>
+        <span class="status-pill" id="server-status">Servidor Activo</span>
+    </header>
+
+    <main class="container">
+
+        <!-- Panel de la cámara -->
+        <section class="card camera-card">
+            <div class="video-wrapper">
+                <!-- Único visor de video de la aplicación -->
+                <video id="video" autoplay playsinline muted></video>
+                <img id="processed-output" class="hidden" alt="Procesado por YOLO">
+                <canvas id="canvas" class="hidden"></canvas>
+            </div>
+
+            <div class="controls">
+                <button id="btn-toggle-cam" class="btn btn-primary">📷 Iniciar Cámara</button>
+                <button id="btn-switch-cam" class="btn btn-secondary">🔄 Cambiar Cámara</button>
+                <button id="btn-snap" class="btn btn-action">⚡ Capturar / Clasificar</button>
+            </div>
+
+            <div class="upload-fallback">
+                <label for="file-input" class="btn-link">O subir foto desde la galería...</label>
+                <input type="file" id="file-input" accept="image/*" class="hidden">
+            </div>
+        </section>
+
+        <!-- Panel de Resultados de Inferencia -->
+        <section class="card stats-card">
+            <h2>Resultados en Tiempo Real</h2>
+            
+            <div id="badge-status" class="result-badge badge-neutral">
+                Esperando captura...
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric">
+                    <span class="metric-label">Plátanos Sanos</span>
+                    <span id="count-sano" class="metric-value green">0</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">En Mal Estado</span>
+                    <span id="count-bad" class="metric-value red">0</span>
+                </div>
+            </div>
+
+            <div class="sorter-simulation">
+                <h3>Simulador de Separador Físico</h3>
+                <div id="sorter-arm" class="arm-status arm-center">Posición: NEUTRAL (Continuar)</div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Se utiliza url_for para enrutamiento nativo de Flask -->
+    <script src="/static/js/camera.js"></script>
+</body>
+</html>
