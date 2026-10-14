@@ -1,5 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
-    const video = document.getElementById("video") || document.getElementById("webcam");
+    const video = document.getElementById("video");
     const processedImg = document.getElementById("processed-output");
     const canvas = document.getElementById("canvas");
 
@@ -9,53 +9,34 @@ document.addEventListener("DOMContentLoaded", () => {
     const fileInput = document.getElementById("file-input");
 
     const badgeStatus = document.getElementById("badge-status");
-    const countSano = document.getElementById("count-sano");
-    const countBad = document.getElementById("count-bad");
+    const percentSano = document.getElementById("percent-sano");
+    const percentBad = document.getElementById("percent-bad");
+    const barSano = document.getElementById("bar-sano");
+    const barBad = document.getElementById("bar-bad");
     const sorterArm = document.getElementById("sorter-arm");
 
     let currentStream = null;
-    let currentFacingMode = "user"; 
+    let currentFacingMode = "environment"; 
 
-    // --- 1. CONTROL DE CÁMARA ---
+    // 1. Control de Cámara
     async function startCamera() {
         stopCamera();
-
         if (processedImg) processedImg.classList.add("hidden");
         if (video) video.classList.remove("hidden");
 
-        let stream = null;
-        const constraintsToTry = [
-            { video: { facingMode: currentFacingMode } },
-            { video: { facingMode: "user" } },
-            { video: true }
-        ];
-
-        for (const constraints of constraintsToTry) {
-            try {
-                stream = await navigator.mediaDevices.getUserMedia(constraints);
-                if (stream) break;
-            } catch (err) {
-                console.warn("Intento de cámara fallido:", err);
+        try {
+            currentStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: currentFacingMode }
+            });
+            video.srcObject = currentStream;
+            await video.play();
+            if (badgeStatus) {
+                badgeStatus.textContent = "Cámara lista. Presiona 'Clasificar'";
+                badgeStatus.className = "result-badge badge-neutral";
             }
-        }
-
-        if (!stream) {
-            alert("No se pudo acceder a ninguna cámara.");
-            return;
-        }
-
-        currentStream = stream;
-        if (video) {
-            video.srcObject = stream;
-            try {
-                await video.play();
-                if (badgeStatus) {
-                    badgeStatus.textContent = "Cámara lista. Presiona 'Capturar / Clasificar'";
-                    badgeStatus.className = "result-badge badge-neutral";
-                }
-            } catch (e) {
-                console.error("Error al reproducir video:", e);
-            }
+        } catch (err) {
+            console.error("Error al acceder a la cámara:", err);
+            alert("No se pudo iniciar la cámara. Verifica los permisos HTTPS/Ngrok.");
         }
     }
 
@@ -71,7 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
         btnToggle.addEventListener("click", () => {
             if (currentStream && currentStream.active) {
                 stopCamera();
-                if (badgeStatus) badgeStatus.textContent = "Cámara apagada";
+                if (badgeStatus) badgeStatus.textContent = "Cámara desactivada";
             } else {
                 startCamera();
             }
@@ -85,47 +66,36 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    window.addEventListener("beforeunload", stopCamera);
-
-    // --- 2. CAPTURA Y CLASIFICACIÓN DESDE CÁMARA ---
+    // 2. Captura y Procesamiento
     if (btnSnap) {
         btnSnap.addEventListener("click", () => {
             if (!currentStream || !video || video.videoWidth === 0) {
-                alert("Primero debes iniciar la cámara y esperar a que muestre imagen.");
+                alert("Primero debes activar la cámara.");
                 return;
             }
 
-            // Preparar el canvas con la resolución real del video
             const ctx = canvas.getContext("2d");
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // Convertir fotograma a blob e inferir
             canvas.toBlob((blob) => {
-                if (blob) {
-                    sendFrameToServer(blob);
-                } else {
-                    alert("Error al capturar el fotograma.");
-                }
+                if (blob) sendFrameToServer(blob);
             }, "image/jpeg", 0.9);
         });
     }
 
-    // --- 3. CLASIFICACIÓN DESDE ARCHIVO / GALERÍA ---
     if (fileInput) {
         fileInput.addEventListener("change", (e) => {
             const file = e.target.files[0];
-            if (file) {
-                sendFrameToServer(file);
-            }
+            if (file) sendFrameToServer(file);
         });
     }
 
-    // --- 4. ENVÍO DE DATOS A FLASK (/predict) ---
+    // 3. Petición POST al servidor Flask
     async function sendFrameToServer(imageFileOrBlob) {
         if (badgeStatus) {
-            badgeStatus.textContent = "⏳ Analizando con YOLOv8...";
+            badgeStatus.textContent = "⏳ Analizando clasificación...";
             badgeStatus.className = "result-badge badge-neutral";
         }
 
@@ -138,81 +108,51 @@ document.addEventListener("DOMContentLoaded", () => {
                 body: formData
             });
 
-            if (!response.ok) {
-                throw new Error(`Error en el servidor: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
 
             const data = await response.json();
 
             if (data.success) {
-                // Formatear Base64 si es necesario
-                let imageSrc = data.processed_image;
-                if (!imageSrc.startsWith("data:image")) {
-                    imageSrc = "data:image/jpeg;base64," + imageSrc;
-                }
-
-                // Ocultar video y mostrar resultado
                 if (processedImg) {
-                    processedImg.src = imageSrc;
+                    processedImg.src = data.image_data;
                     processedImg.classList.remove("hidden");
                 }
                 if (video) video.classList.add("hidden");
 
-                updateUIResults(data.detections || []);
+                updateUIResults(data.diagnosis);
             } else {
-                if (badgeStatus) badgeStatus.textContent = "❌ Error: " + (data.error || "Fallo en inferencia");
+                if (badgeStatus) badgeStatus.textContent = "❌ Error: " + data.error;
             }
         } catch (err) {
             console.error(err);
-            if (badgeStatus) badgeStatus.textContent = "❌ Error de conexión con el servidor Python";
+            if (badgeStatus) badgeStatus.textContent = "❌ Error de conexión";
         }
     }
 
-    // --- 5. ACTUALIZACIÓN DE LA INTERFAZ ---
-    function updateUIResults(detections) {
-        let sanoCount = 0;
-        let badCount = 0;
+    // 4. Actualización Visual de Porcentajes y Brazo
+    function updateUIResults(diagnosis) {
+        const probSano = diagnosis.prob_sano || 0;
+        const probBad = diagnosis.prob_bad || 0;
 
-        detections.forEach(det => {
-            const label = String(det.label || det.name || det.class || "").toLowerCase();
+        // Actualizar textos y barras
+        percentSano.textContent = `${probSano}%`;
+        percentBad.textContent = `${probBad}%`;
 
-            if (["overripe", "rotten", "en_mal_estado", "bad", "podrido", "decay"].some(term => label.includes(term))) {
-                badCount++;
-            } else if (["ripe", "fresh", "sano", "good", "banana", "platano"].some(term => label.includes(term))) {
-                sanoCount++;
-            }
-        });
+        barSano.style.width = `${probSano}%`;
+        barBad.style.width = `${probBad}%`;
 
-        if (countSano) countSano.textContent = sanoCount;
-        if (countBad) countBad.textContent = badCount;
+        if (diagnosis.status === "mal_estado") {
+            badgeStatus.textContent = "⚠️ PLÁTANO EN MAL ESTADO";
+            badgeStatus.className = "result-badge badge-bad";
 
-        if (badCount > 0) {
-            if (badgeStatus) {
-                badgeStatus.textContent = "⚠️ ¡PLÁTANO EN MAL ESTADO DETECTADO!";
-                badgeStatus.className = "result-badge badge-bad";
-            }
-            if (sorterArm) {
-                sorterArm.textContent = "Posición: DESVIAR SEPARADOR 🚨 (Desechar)";
-                sorterArm.className = "arm-status arm-eject";
-            }
-        } else if (sanoCount > 0) {
-            if (badgeStatus) {
-                badgeStatus.textContent = "✅ PLÁTANO SANO DETECTADO";
-                badgeStatus.className = "result-badge badge-sano";
-            }
-            if (sorterArm) {
-                sorterArm.textContent = "Posición: NEUTRAL (Continuar)";
-                sorterArm.className = "arm-status arm-center";
-            }
+            sorterArm.textContent = "Posición: ACTIVAR DESVÍO 🚨 (Desechando)";
+            sorterArm.className = "arm-status arm-eject";
         } else {
-            if (badgeStatus) {
-                badgeStatus.textContent = "No se detectaron plátanos claros";
-                badgeStatus.className = "result-badge badge-neutral";
-            }
-            if (sorterArm) {
-                sorterArm.textContent = "Posición: NEUTRAL (Continuar)";
-                sorterArm.className = "arm-status arm-center";
-            }
+            badgeStatus.textContent = "✅ PLÁTANO SANO";
+            badgeStatus.className = "result-badge badge-sano";
+
+            sorterArm.textContent = "Posición: NEUTRAL (Paso Libre)";
+            sorterArm.className = "arm-status arm-center";
         }
     }
 });
