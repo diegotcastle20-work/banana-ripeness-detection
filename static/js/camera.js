@@ -1,4 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
+    // --- ELEMENTOS DEL DOM ---
     const video = document.getElementById("video");
     const processedImg = document.getElementById("processed-output");
     const canvas = document.getElementById("canvas");
@@ -6,6 +7,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnToggle = document.getElementById("btn-toggle-cam");
     const btnSwitch = document.getElementById("btn-switch-cam");
     const btnSnap = document.getElementById("btn-snap");
+    const btnSnapEsp32 = document.getElementById("btn-snap-esp32");
+    const inputIp = document.getElementById("esp32-ip");
     const fileInput = document.getElementById("file-input");
 
     const badgeStatus = document.getElementById("badge-status");
@@ -18,7 +21,9 @@ document.addEventListener("DOMContentLoaded", () => {
     let currentStream = null;
     let currentFacingMode = "environment"; 
 
-    // 1. Control de Cámara
+    // =========================================================================
+    // 1. GESTIÓN DE LA WEBCAM LOCAL (CELULAR / LAPTOP)
+    // =========================================================================
     async function startCamera() {
         stopCamera();
         if (processedImg) processedImg.classList.add("hidden");
@@ -31,12 +36,12 @@ document.addEventListener("DOMContentLoaded", () => {
             video.srcObject = currentStream;
             await video.play();
             if (badgeStatus) {
-                badgeStatus.textContent = "Cámara lista. Presiona 'Clasificar'";
+                badgeStatus.textContent = "Cámara lista. Presiona 'Clasificar Webcam'";
                 badgeStatus.className = "result-badge badge-neutral";
             }
         } catch (err) {
-            console.error("Error al acceder a la cámara:", err);
-            alert("No se pudo iniciar la cámara. Verifica los permisos HTTPS/Ngrok.");
+            console.error("Error de cámara:", err);
+            alert("No se pudo iniciar la webcam. Asegúrate de usar HTTPS / Ngrok.");
         }
     }
 
@@ -52,7 +57,7 @@ document.addEventListener("DOMContentLoaded", () => {
         btnToggle.addEventListener("click", () => {
             if (currentStream && currentStream.active) {
                 stopCamera();
-                if (badgeStatus) badgeStatus.textContent = "Cámara desactivada";
+                if (badgeStatus) badgeStatus.textContent = "Webcam desactivada";
             } else {
                 startCamera();
             }
@@ -66,11 +71,13 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // 2. Captura y Procesamiento
+    // =========================================================================
+    // 2. CAPTURA Y CLASIFICACIÓN DESDE WEBCAM
+    // =========================================================================
     if (btnSnap) {
         btnSnap.addEventListener("click", () => {
             if (!currentStream || !video || video.videoWidth === 0) {
-                alert("Primero debes activar la cámara.");
+                alert("Primero debes iniciar la webcam.");
                 return;
             }
 
@@ -80,22 +87,25 @@ document.addEventListener("DOMContentLoaded", () => {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
             canvas.toBlob((blob) => {
-                if (blob) sendFrameToServer(blob);
+                if (blob) sendBlobToServer(blob);
             }, "image/jpeg", 0.9);
         });
     }
 
+    // =========================================================================
+    // 3. CAPTURA Y CLASIFICACIÓN DESDE ARCHIVO LOCAL DE GALERÍA
+    // =========================================================================
     if (fileInput) {
         fileInput.addEventListener("change", (e) => {
             const file = e.target.files[0];
-            if (file) sendFrameToServer(file);
+            if (file) sendBlobToServer(file);
         });
     }
 
-    // 3. Petición POST al servidor Flask
-    async function sendFrameToServer(imageFileOrBlob) {
+    // Enviar foto (Blob/Archivo) a la ruta /predict de Flask
+    async function sendBlobToServer(imageFileOrBlob) {
         if (badgeStatus) {
-            badgeStatus.textContent = "⏳ Analizando clasificación...";
+            badgeStatus.textContent = "⏳ Analizando imagen con el modelo...";
             badgeStatus.className = "result-badge badge-neutral";
         }
 
@@ -125,34 +135,87 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         } catch (err) {
             console.error(err);
-            if (badgeStatus) badgeStatus.textContent = "❌ Error de conexión";
+            if (badgeStatus) badgeStatus.textContent = "❌ Error de conexión con el servidor";
         }
     }
 
-    // 4. Actualización Visual de Porcentajes y Brazo
+    // =========================================================================
+    // 4. CAPTURA Y CLASIFICACIÓN DESDE ESP32-CAM POR IP
+    // =========================================================================
+    if (btnSnapEsp32) {
+        btnSnapEsp32.addEventListener("click", async () => {
+            const ip = inputIp ? inputIp.value.trim() : "";
+            if (!ip) {
+                alert("Por favor ingresa la IP local de tu ESP32-CAM (ej: 192.168.1.50).");
+                return;
+            }
+
+            if (badgeStatus) {
+                badgeStatus.textContent = `⏳ Conectando con ESP32-CAM (${ip})...`;
+                badgeStatus.className = "result-badge badge-neutral";
+            }
+
+            try {
+                const response = await fetch("/predict_esp32", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ ip: ip })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    if (processedImg) {
+                        processedImg.src = data.image_data;
+                        processedImg.classList.remove("hidden");
+                    }
+                    if (video) video.classList.add("hidden");
+
+                    updateUIResults(data.diagnosis);
+                } else {
+                    if (badgeStatus) badgeStatus.textContent = "❌ Error ESP32: " + data.error;
+                }
+            } catch (err) {
+                console.error(err);
+                if (badgeStatus) badgeStatus.textContent = "❌ Error de conexión con Flask / ESP32";
+            }
+        });
+    }
+
+    // =========================================================================
+    // 5. ACTUALIZACIÓN VISUAL DE PORCENTAJES, BARRAS Y SEPARADOR
+    // =========================================================================
     function updateUIResults(diagnosis) {
         const probSano = diagnosis.prob_sano || 0;
         const probBad = diagnosis.prob_bad || 0;
 
-        // Actualizar textos y barras
-        percentSano.textContent = `${probSano}%`;
-        percentBad.textContent = `${probBad}%`;
+        // Actualizar valores numéricos
+        if (percentSano) percentSano.textContent = `${probSano}%`;
+        if (percentBad) percentBad.textContent = `${probBad}%`;
 
-        barSano.style.width = `${probSano}%`;
-        barBad.style.width = `${probBad}%`;
+        // Animar ancho de las barras
+        if (barSano) barSano.style.width = `${probSano}%`;
+        if (barBad) barBad.style.width = `${probBad}%`;
 
+        // Diagnóstico dominante
         if (diagnosis.status === "mal_estado") {
-            badgeStatus.textContent = "⚠️ PLÁTANO EN MAL ESTADO";
-            badgeStatus.className = "result-badge badge-bad";
-
-            sorterArm.textContent = "Posición: ACTIVAR DESVÍO 🚨 (Desechando)";
-            sorterArm.className = "arm-status arm-eject";
+            if (badgeStatus) {
+                badgeStatus.textContent = `⚠️ PLÁTANO EN MAL ESTADO (${probBad}% Confianza)`;
+                badgeStatus.className = "result-badge badge-bad";
+            }
+            if (sorterArm) {
+                sorterArm.textContent = "Posición: ACTIVAR DESVÍO 🚨 (Desechando)";
+                sorterArm.className = "arm-status arm-eject";
+            }
         } else {
-            badgeStatus.textContent = "✅ PLÁTANO SANO";
-            badgeStatus.className = "result-badge badge-sano";
-
-            sorterArm.textContent = "Posición: NEUTRAL (Paso Libre)";
-            sorterArm.className = "arm-status arm-center";
+            if (badgeStatus) {
+                badgeStatus.textContent = `✅ PLÁTANO SANO (${probSano}% Confianza)`;
+                badgeStatus.className = "result-badge badge-sano";
+            }
+            if (sorterArm) {
+                sorterArm.textContent = "Posición: NEUTRAL (Paso Libre)";
+                sorterArm.className = "arm-status arm-center";
+            }
         }
     }
 });

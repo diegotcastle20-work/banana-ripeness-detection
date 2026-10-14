@@ -3,68 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Clasificación de Plátanos</title>
-    <!-- Se utiliza url_for para enrutamiento nativo de Flask -->
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <title>Clasificador Inteligente de Plátanos</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
 
     <header class="navbar">
-        <h1>🍌 Clasificador de Plátanos</h1>
-        <span class="status-pill" id="server-status">Servidor Activo</span>
+        <div class="logo">
+            <i class="fa-solid fa-leaf"></i>
+            <h1>Clasificador de Plátanos</h1>
+        </div>
+        <span class="status-pill"><i class="fa-solid fa-circle"></i> Servidor Activo</span>
     </header>
 
     <main class="container">
 
-        <!-- Panel de la cámara -->
+        <!-- Panel 1: Captura e Imagen -->
         <section class="card camera-card">
             <div class="video-wrapper">
-                <!-- Único visor de video de la aplicación -->
                 <video id="video" autoplay playsinline muted></video>
-                <img id="processed-output" class="hidden" alt="Procesado por YOLO">
+                <img id="processed-output" class="hidden" alt="Imagen analizada">
                 <canvas id="canvas" class="hidden"></canvas>
             </div>
 
+            <!-- Controles de la Webcam local -->
             <div class="controls">
-                <button id="btn-toggle-cam" class="btn btn-primary">📷 Iniciar Cámara</button>
-                <button id="btn-switch-cam" class="btn btn-secondary">🔄 Cambiar Cámara</button>
-                <button id="btn-snap" class="btn btn-action">⚡ Capturar / Clasificar</button>
+                <button id="btn-toggle-cam" class="btn btn-primary"><i class="fa-solid fa-video"></i> Iniciar Webcam</button>
+                <button id="btn-switch-cam" class="btn btn-secondary"><i class="fa-solid fa-arrows-rotate"></i> Cambiar</button>
+                <button id="btn-snap" class="btn btn-action"><i class="fa-solid fa-bolt"></i> Clasificar Webcam</button>
             </div>
 
+            <!-- Controles de captura para ESP32-CAM -->
+            <div class="esp32-controls">
+                <input type="text" id="esp32-ip" class="input-ip" placeholder="IP ESP32 (ej: 192.168.1.50)">
+                <button id="btn-snap-esp32" class="btn btn-secondary"><i class="fa-solid fa-camera"></i> Clasificar ESP32</button>
+            </div>
+
+            <!-- Subir archivo local -->
             <div class="upload-fallback">
-                <label for="file-input" class="btn-link">O subir foto desde la galería...</label>
+                <label for="file-input" class="btn-link"><i class="fa-solid fa-upload"></i> O subir foto desde la galería...</label>
                 <input type="file" id="file-input" accept="image/*" class="hidden">
             </div>
         </section>
 
-        <!-- Panel de Resultados de Inferencia -->
+        <!-- Panel 2: Diagnóstico y Porcentajes -->
         <section class="card stats-card">
-            <h2>Resultados en Tiempo Real</h2>
+            <h2>Diagnóstico de Calidad</h2>
             
             <div id="badge-status" class="result-badge badge-neutral">
                 Esperando captura...
             </div>
 
-            <div class="metrics-grid">
-                <div class="metric">
-                    <span class="metric-label">Plátanos Sanos</span>
-                    <span id="count-sano" class="metric-value green">0</span>
+            <!-- Barras de Probabilidad -->
+            <div class="probability-container">
+                <div class="prob-group">
+                    <div class="prob-header">
+                        <span><i class="fa-solid fa-circle-check text-success"></i> Estado Sano</span>
+                        <span id="percent-sano" class="prob-value">0%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div id="bar-sano" class="progress-fill fill-success" style="width: 0%;"></div>
+                    </div>
                 </div>
-                <div class="metric">
-                    <span class="metric-label">En Mal Estado</span>
-                    <span id="count-bad" class="metric-value red">0</span>
+
+                <div class="prob-group">
+                    <div class="prob-header">
+                        <span><i class="fa-solid fa-triangle-exclamation text-danger"></i> En Mal Estado</span>
+                        <span id="percent-bad" class="prob-value">0%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div id="bar-bad" class="progress-fill fill-danger" style="width: 0%;"></div>
+                    </div>
                 </div>
             </div>
 
+            <!-- Simulador de Separador Mecánico -->
             <div class="sorter-simulation">
-                <h3>Simulador de Separador Físico</h3>
-                <div id="sorter-arm" class="arm-status arm-center">Posición: NEUTRAL (Continuar)</div>
+                <h3><i class="fa-solid fa-robot"></i> Estado del Separador Físico</h3>
+                <div id="sorter-arm" class="arm-status arm-center">
+                    Posición: NEUTRAL (Paso Libre)
+                </div>
             </div>
         </section>
 
     </main>
 
-    <!-- Se utiliza url_for para enrutamiento nativo de Flask -->
-    <script src="/static/js/camera.js"></script>
+    <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
 </body>
 </html>
