@@ -19,7 +19,46 @@ document.addEventListener("DOMContentLoaded", () => {
     const sorterArm = document.getElementById("sorter-arm");
 
     let currentStream = null;
-    let currentFacingMode = "environment"; 
+    let currentFacingMode = "environment";
+
+    // --- RECOLECCIÓN DE DATASET ---
+    const btnSaveSano = document.getElementById("btn-save-sano");
+    const btnSaveBad = document.getElementById("btn-save-bad");
+    const saveStatusMsg = document.getElementById("save-status-msg");
+
+    async function saveCurrentSample(label) {
+        if (!processedImg || !processedImg.src || processedImg.classList.contains("hidden")) {
+            alert("Primero realiza una captura o sube una foto.");
+            return;
+        }
+
+        if (saveStatusMsg) saveStatusMsg.textContent = "⏳ Guardando imagen...";
+
+        try {
+            const response = await fetch("/save_sample", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    image_data: processedImg.src,
+                    label: label
+                })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                if (saveStatusMsg) saveStatusMsg.textContent = `✅ Guardado exitosamente en /dataset_propio/${label}`;
+            } else {
+                if (saveStatusMsg) saveStatusMsg.textContent = "❌ Error: " + data.error;
+            }
+        } catch (err) {
+            console.error(err);
+            if (saveStatusMsg) saveStatusMsg.textContent = "❌ Error al conectar con el servidor.";
+        }
+    }
+
+    if (btnSaveSano) btnSaveSano.addEventListener("click", () => saveCurrentSample("sano"));
+    if (btnSaveBad) btnSaveBad.addEventListener("click", () => saveCurrentSample("mal_estado"));
+    
 
     // =========================================================================
     // 1. GESTIÓN DE LA WEBCAM LOCAL (CELULAR / LAPTOP)
