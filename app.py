@@ -226,13 +226,19 @@ def predict():
 def predict_esp32():
     try:
         data = request.get_json()
-        esp32_ip = data.get('ip')
+        esp32_ip = data.get('ip', '').strip()
 
         if not esp32_ip:
             return jsonify({'success': False, 'error': 'Ingresa la IP de la ESP32.'}), 400
 
-        print(f"📡 Solicitando captura a http://{esp32_ip}/capture")
-        resp = requests.get(f"http://{esp32_ip}/capture", timeout=5)
+        # Limpiar prefijos si el usuario escribió http:// o https://
+        esp32_ip = esp32_ip.replace("http://", "").replace("https://", "").strip("/")
+
+        target_url = f"http://{esp32_ip}/capture"
+        print(f"📡 Solicitando captura a: {target_url}")
+
+        # Configurar proxies=None para ignorar la redirección de Ngrok/Sistema
+        resp = requests.get(target_url, timeout=5, proxies={"http": None, "https": None})
 
         if resp.status_code != 200:
             return jsonify({'success': False, 'error': 'No se pudo obtener imagen de la ESP32-CAM.'}), 400
@@ -243,6 +249,7 @@ def predict_esp32():
         if img is None:
             return jsonify({'success': False, 'error': 'Imagen corrupta recibida de la ESP32.'}), 400
 
+        # Inferencia TFLite real
         probs = model_predict_classification(img)
         prob_sano = probs["sano"]
         prob_bad = probs["mal_estado"]
@@ -250,6 +257,14 @@ def predict_esp32():
         status = "sano" if prob_sano >= prob_bad else "mal_estado"
 
         print(f"📊 [ESP32] Predicción -> Sano: {prob_sano*100:.1f}% | Mal Estado: {prob_bad*100:.1f}%")
+
+        # Intentar notificar al servomotor ignorando proxies
+        try:
+            action_url = f"http://{esp32_ip}/action"
+            requests.post(action_url, json={"status": status}, timeout=2, proxies={"http": None, "https": None})
+            print(f"⚙️ Orden de servomotor ('{status}') enviada con éxito a la ESP32.")
+        except Exception as ex:
+            print(f"⚠️ No se pudo enviar señal de servo a la ESP32: {ex}")
 
         _, buffer = cv2.imencode('.jpg', img)
         img_base64 = base64.b64encode(buffer).decode('utf-8')
