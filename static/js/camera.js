@@ -63,6 +63,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // =========================================================================
     // 1. GESTIÓN DE LA WEBCAM LOCAL (CELULAR / LAPTOP)
     // =========================================================================
+    // 1. Iniciar cámara adaptada para iOS Safari
     async function startCamera() {
         stopCamera();
         if (processedImg) processedImg.classList.add("hidden");
@@ -70,17 +71,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
         try {
             currentStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: currentFacingMode }
+                video: { 
+                    facingMode: currentFacingMode,
+                    width: { ideal: 640 },
+                    height: { ideal: 480 }
+                },
+                audio: false  // Obligatorio para iOS Safari
             });
             video.srcObject = currentStream;
             await video.play();
-            if (badgeStatus) {
-                badgeStatus.textContent = "Cámara lista. Presiona 'Clasificar Webcam'";
-                badgeStatus.className = "result-badge badge-neutral";
-            }
         } catch (err) {
-            console.error("Error de cámara:", err);
-            alert("No se pudo iniciar la webcam. Asegúrate de usar HTTPS / Ngrok.");
+            console.error("Error en iOS/Safari:", err);
+            alert("Asegúrate de permitir el acceso a la cámara en los ajustes de Safari.");
         }
     }
 
@@ -142,9 +144,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Enviar foto (Blob/Archivo) a la ruta /predict de Flask
+    // 2. Envío a /predict con soporte para Ngrok e iOS
     async function sendBlobToServer(imageFileOrBlob) {
         if (badgeStatus) {
-            badgeStatus.textContent = "⏳ Analizando imagen con el modelo...";
+            badgeStatus.textContent = "⏳ Analizando imagen...";
             badgeStatus.className = "result-badge badge-neutral";
         }
 
@@ -154,10 +157,11 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             const response = await fetch("/predict", {
                 method: "POST",
+                headers: {
+                    'ngrok-skip-browser-warning': 'true' // Salta el aviso de Ngrok en iPhone
+                },
                 body: formData
             });
-
-            if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
 
             const data = await response.json();
 
@@ -167,15 +171,57 @@ document.addEventListener("DOMContentLoaded", () => {
                     processedImg.classList.remove("hidden");
                 }
                 if (video) video.classList.add("hidden");
-
                 updateUIResults(data.diagnosis);
             } else {
                 if (badgeStatus) badgeStatus.textContent = "❌ Error: " + data.error;
             }
         } catch (err) {
             console.error(err);
-            if (badgeStatus) badgeStatus.textContent = "❌ Error de conexión con el servidor";
+            if (badgeStatus) badgeStatus.textContent = "❌ Error de conexión en iOS";
         }
+    }
+
+    // 3. Envío a /predict_esp32 con soporte para Ngrok e iOS
+    if (btnSnapEsp32) {
+        btnSnapEsp32.addEventListener("click", async () => {
+            const ip = inputIp ? inputIp.value.trim() : "";
+            if (!ip) {
+                alert("Ingresa la IP local de tu ESP32-CAM.");
+                return;
+            }
+
+            if (badgeStatus) {
+                badgeStatus.textContent = `⏳ Conectando con ESP32 (${ip})...`;
+                badgeStatus.className = "result-badge badge-neutral";
+            }
+
+            try {
+                const response = await fetch("/predict_esp32", {
+                    method: "POST",
+                    headers: { 
+                        "Content-Type": "application/json",
+                        "ngrok-skip-browser-warning": "true" // Salta el aviso de Ngrok en iPhone
+                    },
+                    body: JSON.stringify({ ip: ip })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    if (processedImg) {
+                        processedImg.src = data.image_data;
+                        processedImg.classList.remove("hidden");
+                    }
+                    if (video) video.classList.add("hidden");
+                    updateUIResults(data.diagnosis);
+                } else {
+                    if (badgeStatus) badgeStatus.textContent = "❌ Error ESP32: " + data.error;
+                }
+            } catch (err) {
+                console.error(err);
+                if (badgeStatus) badgeStatus.textContent = "❌ Error de conexión en iOS";
+            }
+        });
     }
 
     // =========================================================================
